@@ -3,7 +3,7 @@
 import torch
 from diffusers import DiffusionPipeline
 
-def change_weight(HFmodel, SDmodel):
+def change_weight_unet(HFmodel, SDmodel, ema=False):
     '''
     args: 
         :HFmodel: HF model state_dict (ex, DiffusionPipeline.from_pretrained("CompVis/ldm-celebahq-256").unet.state_dict())
@@ -335,7 +335,15 @@ def change_weight(HFmodel, SDmodel):
     model.diffusion_model.out.2.weight,conv_out.weight
     model.diffusion_model.out.2.bias,conv_out.bias'''
 
-    SD2HF = {x.split(',')[0].strip(): x.split(',')[1].strip() for x in SD2HF.strip().split('\n')}
+    if ema:
+        def rename_to_ema(name):
+            name.replace("model.", "")
+            name.replace(".", "")
+            name.replace("diffusion_model", "model_ema.diffusion_model")
+        SD2HF = {rename_to_ema(x.split(',')[0].strip()): x.split(',')[1].strip() for x in SD2HF.strip().split('\n')}
+                    
+    else:
+        SD2HF = {x.split(',')[0].strip(): x.split(',')[1].strip() for x in SD2HF.strip().split('\n')}
 
     SDModified =  '''
     model.diffusion_model.input_blocks.4.1.qkv.weight
@@ -502,7 +510,7 @@ def change_weight(HFmodel, SDmodel):
     up_blocks.2.attentions.2.to_v.bias
     up_blocks.2.attentions.2.to_out.0.weight
     '''.strip().split()
-
+    
     HFindex = 0
     SDindex = 0
     while SDindex < len(SDModified):
@@ -550,11 +558,287 @@ def change_weight(HFmodel, SDmodel):
 
     assert sorted(list(HFmodel.keys())) == sorted(HFChanged)
     return HFmodel, HFChanged
-                
+
+def change_weight_vqvae(HFmodel, SDmodel):
+    HF2SD = '''
+    encoder.conv_in.weight,first_stage_model.encoder.conv_in.weight
+    encoder.conv_in.bias,first_stage_model.encoder.conv_in.bias
+    encoder.down_blocks.0.resnets.0.norm1.weight,first_stage_model.encoder.down.0.block.0.norm1.weight
+    encoder.down_blocks.0.resnets.0.norm1.bias,first_stage_model.encoder.down.0.block.0.norm1.bias
+    encoder.down_blocks.0.resnets.0.conv1.weight,first_stage_model.encoder.down.0.block.0.conv1.weight
+    encoder.down_blocks.0.resnets.0.conv1.bias,first_stage_model.encoder.down.0.block.0.conv1.bias
+    encoder.down_blocks.0.resnets.0.norm2.weight,first_stage_model.encoder.down.0.block.0.norm2.weight
+    encoder.down_blocks.0.resnets.0.norm2.bias,first_stage_model.encoder.down.0.block.0.norm2.bias
+    encoder.down_blocks.0.resnets.0.conv2.weight,first_stage_model.encoder.down.0.block.0.conv2.weight
+    encoder.down_blocks.0.resnets.0.conv2.bias,first_stage_model.encoder.down.0.block.0.conv2.bias
+    encoder.down_blocks.0.resnets.1.norm1.weight,first_stage_model.encoder.down.0.block.1.norm1.weight
+    encoder.down_blocks.0.resnets.1.norm1.bias,first_stage_model.encoder.down.0.block.1.norm1.bias
+    encoder.down_blocks.0.resnets.1.conv1.weight,first_stage_model.encoder.down.0.block.1.conv1.weight
+    encoder.down_blocks.0.resnets.1.conv1.bias,first_stage_model.encoder.down.0.block.1.conv1.bias
+    encoder.down_blocks.0.resnets.1.norm2.weight,first_stage_model.encoder.down.0.block.1.norm2.weight
+    encoder.down_blocks.0.resnets.1.norm2.bias,first_stage_model.encoder.down.0.block.1.norm2.bias
+    encoder.down_blocks.0.resnets.1.conv2.weight,first_stage_model.encoder.down.0.block.1.conv2.weight
+    encoder.down_blocks.0.resnets.1.conv2.bias,first_stage_model.encoder.down.0.block.1.conv2.bias
+    encoder.down_blocks.0.downsamplers.0.conv.weight,first_stage_model.encoder.down.0.downsample.conv.weight
+    encoder.down_blocks.0.downsamplers.0.conv.bias,first_stage_model.encoder.down.0.downsample.conv.bias
+    encoder.down_blocks.1.resnets.0.norm1.weight,first_stage_model.encoder.down.1.block.0.norm1.weight
+    encoder.down_blocks.1.resnets.0.norm1.bias,first_stage_model.encoder.down.1.block.0.norm1.bias
+    encoder.down_blocks.1.resnets.0.conv1.weight,first_stage_model.encoder.down.1.block.0.conv1.weight
+    encoder.down_blocks.1.resnets.0.conv1.bias,first_stage_model.encoder.down.1.block.0.conv1.bias
+    encoder.down_blocks.1.resnets.0.norm2.weight,first_stage_model.encoder.down.1.block.0.norm2.weight
+    encoder.down_blocks.1.resnets.0.norm2.bias,first_stage_model.encoder.down.1.block.0.norm2.bias
+    encoder.down_blocks.1.resnets.0.conv2.weight,first_stage_model.encoder.down.1.block.0.conv2.weight
+    encoder.down_blocks.1.resnets.0.conv2.bias,first_stage_model.encoder.down.1.block.0.conv2.bias
+    encoder.down_blocks.1.resnets.0.conv_shortcut.weight,first_stage_model.encoder.down.1.block.0.nin_shortcut.weight
+    encoder.down_blocks.1.resnets.0.conv_shortcut.bias,first_stage_model.encoder.down.1.block.0.nin_shortcut.bias
+    encoder.down_blocks.1.resnets.1.norm1.weight,first_stage_model.encoder.down.1.block.1.norm1.weight
+    encoder.down_blocks.1.resnets.1.norm1.bias,first_stage_model.encoder.down.1.block.1.norm1.bias
+    encoder.down_blocks.1.resnets.1.conv1.weight,first_stage_model.encoder.down.1.block.1.conv1.weight
+    encoder.down_blocks.1.resnets.1.conv1.bias,first_stage_model.encoder.down.1.block.1.conv1.bias
+    encoder.down_blocks.1.resnets.1.norm2.weight,first_stage_model.encoder.down.1.block.1.norm2.weight
+    encoder.down_blocks.1.resnets.1.norm2.bias,first_stage_model.encoder.down.1.block.1.norm2.bias
+    encoder.down_blocks.1.resnets.1.conv2.weight,first_stage_model.encoder.down.1.block.1.conv2.weight
+    encoder.down_blocks.1.resnets.1.conv2.bias,first_stage_model.encoder.down.1.block.1.conv2.bias
+    encoder.down_blocks.1.downsamplers.0.conv.weight,first_stage_model.encoder.down.1.downsample.conv.weight
+    encoder.down_blocks.1.downsamplers.0.conv.bias,first_stage_model.encoder.down.1.downsample.conv.bias
+    encoder.down_blocks.2.resnets.0.norm1.weight,first_stage_model.encoder.down.2.block.0.norm1.weight
+    encoder.down_blocks.2.resnets.0.norm1.bias,first_stage_model.encoder.down.2.block.0.norm1.bias
+    encoder.down_blocks.2.resnets.0.conv1.weight,first_stage_model.encoder.down.2.block.0.conv1.weight
+    encoder.down_blocks.2.resnets.0.conv1.bias,first_stage_model.encoder.down.2.block.0.conv1.bias
+    encoder.down_blocks.2.resnets.0.norm2.weight,first_stage_model.encoder.down.2.block.0.norm2.weight
+    encoder.down_blocks.2.resnets.0.norm2.bias,first_stage_model.encoder.down.2.block.0.norm2.bias
+    encoder.down_blocks.2.resnets.0.conv2.weight,first_stage_model.encoder.down.2.block.0.conv2.weight
+    encoder.down_blocks.2.resnets.0.conv2.bias,first_stage_model.encoder.down.2.block.0.conv2.bias
+    encoder.down_blocks.2.resnets.0.conv_shortcut.weight,first_stage_model.encoder.down.2.block.0.nin_shortcut.weight
+    encoder.down_blocks.2.resnets.0.conv_shortcut.bias,first_stage_model.encoder.down.2.block.0.nin_shortcut.bias
+    encoder.down_blocks.2.resnets.1.norm1.weight,first_stage_model.encoder.down.2.block.1.norm1.weight
+    encoder.down_blocks.2.resnets.1.norm1.bias,first_stage_model.encoder.down.2.block.1.norm1.bias
+    encoder.down_blocks.2.resnets.1.conv1.weight,first_stage_model.encoder.down.2.block.1.conv1.weight
+    encoder.down_blocks.2.resnets.1.conv1.bias,first_stage_model.encoder.down.2.block.1.conv1.bias
+    encoder.down_blocks.2.resnets.1.norm2.weight,first_stage_model.encoder.down.2.block.1.norm2.weight
+    encoder.down_blocks.2.resnets.1.norm2.bias,first_stage_model.encoder.down.2.block.1.norm2.bias
+    encoder.down_blocks.2.resnets.1.conv2.weight,first_stage_model.encoder.down.2.block.1.conv2.weight
+    encoder.down_blocks.2.resnets.1.conv2.bias,first_stage_model.encoder.down.2.block.1.conv2.bias
+    encoder.mid_block.attentions.0.group_norm.weight,first_stage_model.encoder.mid.attn_1.norm.weight
+    encoder.mid_block.attentions.0.group_norm.bias,first_stage_model.encoder.mid.attn_1.norm.bias
+    encoder.mid_block.attentions.0.to_q.bias,first_stage_model.encoder.mid.attn_1.q.bias
+    encoder.mid_block.attentions.0.to_k.bias,first_stage_model.encoder.mid.attn_1.k.bias
+    encoder.mid_block.attentions.0.to_v.bias,first_stage_model.encoder.mid.attn_1.v.bias
+    encoder.mid_block.attentions.0.to_out.0.bias,first_stage_model.encoder.mid.attn_1.proj_out.bias
+    encoder.mid_block.resnets.0.norm1.weight,first_stage_model.encoder.mid.block_1.norm1.weight
+    encoder.mid_block.resnets.0.norm1.bias,first_stage_model.encoder.mid.block_1.norm1.bias
+    encoder.mid_block.resnets.0.conv1.weight,first_stage_model.encoder.mid.block_1.conv1.weight
+    encoder.mid_block.resnets.0.conv1.bias,first_stage_model.encoder.mid.block_1.conv1.bias
+    encoder.mid_block.resnets.0.norm2.weight,first_stage_model.encoder.mid.block_1.norm2.weight
+    encoder.mid_block.resnets.0.norm2.bias,first_stage_model.encoder.mid.block_1.norm2.bias
+    encoder.mid_block.resnets.0.conv2.weight,first_stage_model.encoder.mid.block_1.conv2.weight
+    encoder.mid_block.resnets.0.conv2.bias,first_stage_model.encoder.mid.block_1.conv2.bias
+    encoder.mid_block.resnets.1.norm1.weight,first_stage_model.encoder.mid.block_2.norm1.weight
+    encoder.mid_block.resnets.1.norm1.bias,first_stage_model.encoder.mid.block_2.norm1.bias
+    encoder.mid_block.resnets.1.conv1.weight,first_stage_model.encoder.mid.block_2.conv1.weight
+    encoder.mid_block.resnets.1.conv1.bias,first_stage_model.encoder.mid.block_2.conv1.bias
+    encoder.mid_block.resnets.1.norm2.weight,first_stage_model.encoder.mid.block_2.norm2.weight
+    encoder.mid_block.resnets.1.norm2.bias,first_stage_model.encoder.mid.block_2.norm2.bias
+    encoder.mid_block.resnets.1.conv2.weight,first_stage_model.encoder.mid.block_2.conv2.weight
+    encoder.mid_block.resnets.1.conv2.bias,first_stage_model.encoder.mid.block_2.conv2.bias
+    encoder.conv_norm_out.weight,first_stage_model.encoder.norm_out.weight
+    encoder.conv_norm_out.bias,first_stage_model.encoder.norm_out.bias
+    encoder.conv_out.weight,first_stage_model.encoder.conv_out.weight
+    encoder.conv_out.bias,first_stage_model.encoder.conv_out.bias
+    quant_conv.weight,first_stage_model.quant_conv.weight
+    quant_conv.bias,first_stage_model.quant_conv.bias
+    quantize.embedding.weight,first_stage_model.quantize.embedding.weight
+    post_quant_conv.weight,first_stage_model.post_quant_conv.weight
+    post_quant_conv.bias,first_stage_model.post_quant_conv.bias
+    decoder.conv_in.weight,first_stage_model.decoder.conv_in.weight
+    decoder.conv_in.bias,first_stage_model.decoder.conv_in.bias
+    decoder.up_blocks.0.resnets.0.norm1.weight,first_stage_model.decoder.up.2.block.0.norm1.weight
+    decoder.up_blocks.0.resnets.0.norm1.bias,first_stage_model.decoder.up.2.block.0.norm1.bias
+    decoder.up_blocks.0.resnets.0.conv1.weight,first_stage_model.decoder.up.2.block.0.conv1.weight
+    decoder.up_blocks.0.resnets.0.conv1.bias,first_stage_model.decoder.up.2.block.0.conv1.bias
+    decoder.up_blocks.0.resnets.0.norm2.weight,first_stage_model.decoder.up.2.block.0.norm2.weight
+    decoder.up_blocks.0.resnets.0.norm2.bias,first_stage_model.decoder.up.2.block.0.norm2.bias
+    decoder.up_blocks.0.resnets.0.conv2.weight,first_stage_model.decoder.up.2.block.0.conv2.weight
+    decoder.up_blocks.0.resnets.0.conv2.bias,first_stage_model.decoder.up.2.block.0.conv2.bias
+    decoder.up_blocks.0.resnets.1.norm1.weight,first_stage_model.decoder.up.2.block.1.norm1.weight
+    decoder.up_blocks.0.resnets.1.norm1.bias,first_stage_model.decoder.up.2.block.1.norm1.bias
+    decoder.up_blocks.0.resnets.1.conv1.weight,first_stage_model.decoder.up.2.block.1.conv1.weight
+    decoder.up_blocks.0.resnets.1.conv1.bias,first_stage_model.decoder.up.2.block.1.conv1.bias
+    decoder.up_blocks.0.resnets.1.norm2.weight,first_stage_model.decoder.up.2.block.1.norm2.weight
+    decoder.up_blocks.0.resnets.1.norm2.bias,first_stage_model.decoder.up.2.block.1.norm2.bias
+    decoder.up_blocks.0.resnets.1.conv2.weight,first_stage_model.decoder.up.2.block.1.conv2.weight
+    decoder.up_blocks.0.resnets.1.conv2.bias,first_stage_model.decoder.up.2.block.1.conv2.bias
+    decoder.up_blocks.0.resnets.2.norm1.weight,first_stage_model.decoder.up.2.block.2.norm1.weight
+    decoder.up_blocks.0.resnets.2.norm1.bias,first_stage_model.decoder.up.2.block.2.norm1.bias
+    decoder.up_blocks.0.resnets.2.conv1.weight,first_stage_model.decoder.up.2.block.2.conv1.weight
+    decoder.up_blocks.0.resnets.2.conv1.bias,first_stage_model.decoder.up.2.block.2.conv1.bias
+    decoder.up_blocks.0.resnets.2.norm2.weight,first_stage_model.decoder.up.2.block.2.norm2.weight
+    decoder.up_blocks.0.resnets.2.norm2.bias,first_stage_model.decoder.up.2.block.2.norm2.bias
+    decoder.up_blocks.0.resnets.2.conv2.weight,first_stage_model.decoder.up.2.block.2.conv2.weight
+    decoder.up_blocks.0.resnets.2.conv2.bias,first_stage_model.decoder.up.2.block.2.conv2.bias
+    decoder.up_blocks.0.upsamplers.0.conv.weight,first_stage_model.decoder.up.2.upsample.conv.weight
+    decoder.up_blocks.0.upsamplers.0.conv.bias,first_stage_model.decoder.up.2.upsample.conv.bias
+    decoder.up_blocks.1.resnets.0.norm1.weight,first_stage_model.decoder.up.1.block.0.norm1.weight
+    decoder.up_blocks.1.resnets.0.norm1.bias,first_stage_model.decoder.up.1.block.0.norm1.bias
+    decoder.up_blocks.1.resnets.0.conv1.weight,first_stage_model.decoder.up.1.block.0.conv1.weight
+    decoder.up_blocks.1.resnets.0.conv1.bias,first_stage_model.decoder.up.1.block.0.conv1.bias
+    decoder.up_blocks.1.resnets.0.norm2.weight,first_stage_model.decoder.up.1.block.0.norm2.weight
+    decoder.up_blocks.1.resnets.0.norm2.bias,first_stage_model.decoder.up.1.block.0.norm2.bias
+    decoder.up_blocks.1.resnets.0.conv2.weight,first_stage_model.decoder.up.1.block.0.conv2.weight
+    decoder.up_blocks.1.resnets.0.conv2.bias,first_stage_model.decoder.up.1.block.0.conv2.bias
+    decoder.up_blocks.1.resnets.0.conv_shortcut.weight,first_stage_model.decoder.up.1.block.0.nin_shortcut.weight
+    decoder.up_blocks.1.resnets.0.conv_shortcut.bias,first_stage_model.decoder.up.1.block.0.nin_shortcut.bias
+    decoder.up_blocks.1.resnets.1.norm1.weight,first_stage_model.decoder.up.1.block.1.norm1.weight
+    decoder.up_blocks.1.resnets.1.norm1.bias,first_stage_model.decoder.up.1.block.1.norm1.bias
+    decoder.up_blocks.1.resnets.1.conv1.weight,first_stage_model.decoder.up.1.block.1.conv1.weight
+    decoder.up_blocks.1.resnets.1.conv1.bias,first_stage_model.decoder.up.1.block.1.conv1.bias
+    decoder.up_blocks.1.resnets.1.norm2.weight,first_stage_model.decoder.up.1.block.1.norm2.weight
+    decoder.up_blocks.1.resnets.1.norm2.bias,first_stage_model.decoder.up.1.block.1.norm2.bias
+    decoder.up_blocks.1.resnets.1.conv2.weight,first_stage_model.decoder.up.1.block.1.conv2.weight
+    decoder.up_blocks.1.resnets.1.conv2.bias,first_stage_model.decoder.up.1.block.1.conv2.bias
+    decoder.up_blocks.1.resnets.2.norm1.weight,first_stage_model.decoder.up.1.block.2.norm1.weight
+    decoder.up_blocks.1.resnets.2.norm1.bias,first_stage_model.decoder.up.1.block.2.norm1.bias
+    decoder.up_blocks.1.resnets.2.conv1.weight,first_stage_model.decoder.up.1.block.2.conv1.weight
+    decoder.up_blocks.1.resnets.2.conv1.bias,first_stage_model.decoder.up.1.block.2.conv1.bias
+    decoder.up_blocks.1.resnets.2.norm2.weight,first_stage_model.decoder.up.1.block.2.norm2.weight
+    decoder.up_blocks.1.resnets.2.norm2.bias,first_stage_model.decoder.up.1.block.2.norm2.bias
+    decoder.up_blocks.1.resnets.2.conv2.weight,first_stage_model.decoder.up.1.block.2.conv2.weight
+    decoder.up_blocks.1.resnets.2.conv2.bias,first_stage_model.decoder.up.1.block.2.conv2.bias
+    decoder.up_blocks.1.upsamplers.0.conv.weight,first_stage_model.decoder.up.1.upsample.conv.weight
+    decoder.up_blocks.1.upsamplers.0.conv.bias,first_stage_model.decoder.up.1.upsample.conv.bias
+    decoder.up_blocks.2.resnets.0.norm1.weight,first_stage_model.decoder.up.0.block.0.norm1.weight
+    decoder.up_blocks.2.resnets.0.norm1.bias,first_stage_model.decoder.up.0.block.0.norm1.bias
+    decoder.up_blocks.2.resnets.0.conv1.weight,first_stage_model.decoder.up.0.block.0.conv1.weight
+    decoder.up_blocks.2.resnets.0.conv1.bias,first_stage_model.decoder.up.0.block.0.conv1.bias
+    decoder.up_blocks.2.resnets.0.norm2.weight,first_stage_model.decoder.up.0.block.0.norm2.weight
+    decoder.up_blocks.2.resnets.0.norm2.bias,first_stage_model.decoder.up.0.block.0.norm2.bias
+    decoder.up_blocks.2.resnets.0.conv2.weight,first_stage_model.decoder.up.0.block.0.conv2.weight
+    decoder.up_blocks.2.resnets.0.conv2.bias,first_stage_model.decoder.up.0.block.0.conv2.bias
+    decoder.up_blocks.2.resnets.0.conv_shortcut.weight,first_stage_model.decoder.up.0.block.0.nin_shortcut.weight
+    decoder.up_blocks.2.resnets.0.conv_shortcut.bias,first_stage_model.decoder.up.0.block.0.nin_shortcut.bias
+    decoder.up_blocks.2.resnets.1.norm1.weight,first_stage_model.decoder.up.0.block.1.norm1.weight
+    decoder.up_blocks.2.resnets.1.norm1.bias,first_stage_model.decoder.up.0.block.1.norm1.bias
+    decoder.up_blocks.2.resnets.1.conv1.weight,first_stage_model.decoder.up.0.block.1.conv1.weight
+    decoder.up_blocks.2.resnets.1.conv1.bias,first_stage_model.decoder.up.0.block.1.conv1.bias
+    decoder.up_blocks.2.resnets.1.norm2.weight,first_stage_model.decoder.up.0.block.1.norm2.weight
+    decoder.up_blocks.2.resnets.1.norm2.bias,first_stage_model.decoder.up.0.block.1.norm2.bias
+    decoder.up_blocks.2.resnets.1.conv2.weight,first_stage_model.decoder.up.0.block.1.conv2.weight
+    decoder.up_blocks.2.resnets.1.conv2.bias,first_stage_model.decoder.up.0.block.1.conv2.bias
+    decoder.up_blocks.2.resnets.2.norm1.weight,first_stage_model.decoder.up.0.block.2.norm1.weight
+    decoder.up_blocks.2.resnets.2.norm1.bias,first_stage_model.decoder.up.0.block.2.norm1.bias
+    decoder.up_blocks.2.resnets.2.conv1.weight,first_stage_model.decoder.up.0.block.2.conv1.weight
+    decoder.up_blocks.2.resnets.2.conv1.bias,first_stage_model.decoder.up.0.block.2.conv1.bias
+    decoder.up_blocks.2.resnets.2.norm2.weight,first_stage_model.decoder.up.0.block.2.norm2.weight
+    decoder.up_blocks.2.resnets.2.norm2.bias,first_stage_model.decoder.up.0.block.2.norm2.bias
+    decoder.up_blocks.2.resnets.2.conv2.weight,first_stage_model.decoder.up.0.block.2.conv2.weight
+    decoder.up_blocks.2.resnets.2.conv2.bias,first_stage_model.decoder.up.0.block.2.conv2.bias
+    decoder.mid_block.attentions.0.group_norm.weight,first_stage_model.decoder.mid.attn_1.norm.weight
+    decoder.mid_block.attentions.0.group_norm.bias,first_stage_model.decoder.mid.attn_1.norm.bias
+    decoder.mid_block.attentions.0.to_q.bias,first_stage_model.decoder.mid.attn_1.q.bias
+    decoder.mid_block.attentions.0.to_k.bias,first_stage_model.decoder.mid.attn_1.k.bias
+    decoder.mid_block.attentions.0.to_v.bias,first_stage_model.decoder.mid.attn_1.v.bias
+    decoder.mid_block.attentions.0.to_out.0.bias,first_stage_model.decoder.mid.attn_1.proj_out.bias
+    decoder.mid_block.resnets.0.norm1.weight,first_stage_model.decoder.mid.block_1.norm1.weight
+    decoder.mid_block.resnets.0.norm1.bias,first_stage_model.decoder.mid.block_1.norm1.bias
+    decoder.mid_block.resnets.0.conv1.weight,first_stage_model.decoder.mid.block_1.conv1.weight
+    decoder.mid_block.resnets.0.conv1.bias,first_stage_model.decoder.mid.block_1.conv1.bias
+    decoder.mid_block.resnets.0.norm2.weight,first_stage_model.decoder.mid.block_1.norm2.weight
+    decoder.mid_block.resnets.0.norm2.bias,first_stage_model.decoder.mid.block_1.norm2.bias
+    decoder.mid_block.resnets.0.conv2.weight,first_stage_model.decoder.mid.block_1.conv2.weight
+    decoder.mid_block.resnets.0.conv2.bias,first_stage_model.decoder.mid.block_1.conv2.bias
+    decoder.mid_block.resnets.1.norm1.weight,first_stage_model.decoder.mid.block_2.norm1.weight
+    decoder.mid_block.resnets.1.norm1.bias,first_stage_model.decoder.mid.block_2.norm1.bias
+    decoder.mid_block.resnets.1.conv1.weight,first_stage_model.decoder.mid.block_2.conv1.weight
+    decoder.mid_block.resnets.1.conv1.bias,first_stage_model.decoder.mid.block_2.conv1.bias
+    decoder.mid_block.resnets.1.norm2.weight,first_stage_model.decoder.mid.block_2.norm2.weight
+    decoder.mid_block.resnets.1.norm2.bias,first_stage_model.decoder.mid.block_2.norm2.bias
+    decoder.mid_block.resnets.1.conv2.weight,first_stage_model.decoder.mid.block_2.conv2.weight
+    decoder.mid_block.resnets.1.conv2.bias,first_stage_model.decoder.mid.block_2.conv2.bias
+    decoder.conv_norm_out.weight,first_stage_model.decoder.norm_out.weight
+    decoder.conv_norm_out.bias,first_stage_model.decoder.norm_out.bias
+    decoder.conv_out.weight,first_stage_model.decoder.conv_out.weight
+    decoder.conv_out.bias,first_stage_model.decoder.conv_out.bias
+    '''
+
+    SD2HF = {x.split(',')[1].strip(): x.split(',')[0].strip() for x in HF2SD.strip().split('\n')}
+
+    SDModified = '''
+    first_stage_model.encoder.mid.attn_1.q.weight
+    first_stage_model.encoder.mid.attn_1.k.weight
+    first_stage_model.encoder.mid.attn_1.v.weight
+    first_stage_model.encoder.mid.attn_1.proj_out.weight
+    first_stage_model.decoder.mid.attn_1.q.weight
+    first_stage_model.decoder.mid.attn_1.k.weight
+    first_stage_model.decoder.mid.attn_1.v.weight
+    first_stage_model.decoder.mid.attn_1.proj_out.weight
+    '''.strip().split()
+
+    HFModified = '''
+    encoder.mid_block.attentions.0.to_q.weight
+    encoder.mid_block.attentions.0.to_k.weight
+    encoder.mid_block.attentions.0.to_v.weight
+    encoder.mid_block.attentions.0.to_out.0.weight
+    decoder.mid_block.attentions.0.to_q.weight
+    decoder.mid_block.attentions.0.to_k.weight
+    decoder.mid_block.attentions.0.to_v.weight
+    decoder.mid_block.attentions.0.to_out.0.weight    
+    '''.strip().split()
+
+
+    HFindex = 0
+    SDindex = 0
+    while SDindex < len(SDModified):
+        SDkey = SDModified[SDindex:SDindex+1]
+        SD2HF[SDkey[0]] = HFModified[HFindex:HFindex+1]
+        HFindex += 1
+        SDindex += 1
+
+    HFChanged = []
+    for key in SD2HF:
+        if type(SD2HF[key]) == str:
+            # assert HFmodel[SD2HF[key]].equal(SDmodel[key])
+            HFmodel[SD2HF[key]] = SDmodel[key]
+            HFChanged.append(SD2HF[key])
+        
+        else:
+            if len(SD2HF[key]) == 1:
+                # assert HFmodel[SD2HF[key][0]].equal(SDmodel[key].squeeze())
+                HFmodel[SD2HF[key][0]] = SDmodel[key].squeeze()
+                HFChanged += SD2HF[key]
+            else:
+                breakpoint()
+                raise NotImplementedError
+            
+    assert sorted(list(HFmodel.keys())) == sorted(HFChanged)
+    return HFmodel, HFChanged
+
+def compare_key_name_by_weight(HFmodel, SDmodel):
+    SDkeys = SDmodel.keys()
+    HFkeys = HFmodel.keys()
+
+    HFChanged = []
+    for HFkey in HFkeys:
+        exist = False
+        for SDkey in SDkeys:
+            if HFmodel[HFkey].equal(SDmodel[SDkey]):
+                print(HFkey, SDkey, sep=',')
+                HFChanged.append(HFkey)
+                exist = True
+                break
+        if not exist:
+            # print(HFkey)
+            pass
+            
+
+    return HFmodel, HFChanged
+
+    
 
 if __name__ == '__main__':
     SDmodel = torch.load(open("/raid/workspace/cvml_user/rhg/ECCV2024/local_shared/pretrained_models/sd_models/celebahq-ldm-vq-4.ckpt", 'rb'))["state_dict"]
-    HFmodel = DiffusionPipeline.from_pretrained("CompVis/ldm-celebahq-256").unet.state_dict()
-    HFmodel, HFChanged = change_weight(HFmodel, SDmodel)
+    pipe = DiffusionPipeline.from_pretrained("CompVis/ldm-celebahq-256")
+    HFmodelunet = pipe.unet.state_dict()
+    HFmodelunet, HFChangedunet = change_weight_unet(HFmodelunet, SDmodel)
 
-    breakpoint()
+    HFmodelvqvae = pipe.vqvae.state_dict()
+    HFmodelvqvae, HFChangedvqvae = change_weight_vqvae(HFmodelvqvae, SDmodel)
