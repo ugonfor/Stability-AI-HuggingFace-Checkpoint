@@ -340,6 +340,7 @@ def change_weight_unet(HFmodel, SDmodel, ema=False):
             name.replace("model.", "")
             name.replace(".", "")
             name.replace("diffusion_model", "model_ema.diffusion_model")
+            return name
         SD2HF = {rename_to_ema(x.split(',')[0].strip()): x.split(',')[1].strip() for x in SD2HF.strip().split('\n')}
                     
     else:
